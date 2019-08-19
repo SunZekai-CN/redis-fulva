@@ -393,13 +393,13 @@ migrate:
 start-test:
 	@echo ""
 	@echo "Initialize the test environment"
-	python3 benchmarks/clean.py -p 7001
+	python benchmarks/clean.py -p 7001
 	echo yes|redis-cli --cluster reshard 127.0.0.1:7001 --cluster-from all --cluster-to f94fcb83dba57404971444c75b7923a7492b573e --cluster-slots 8192 
 	@echo "**********the test environment is reday*********"
 	@echo ""
 	@echo "**********start loading keys*******************"
 	@echo ""
-	python3 benchmarks/input.py -p 7001 -n 10000
+	python benchmarks/input.py -p 7001 -n 10000
 	@echo ""
 	@echo "***********keys are loaded*********************"
 	@echo ""

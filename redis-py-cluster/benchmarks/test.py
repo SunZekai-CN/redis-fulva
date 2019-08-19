@@ -128,4 +128,5 @@ if __name__ == "__main__":
     t2 = time.time() - t1
     with open('result.csv', 'w') as f:
         [f.write('{0},{1}\n'.format(key, value)) for key, value in mydict.items()]
+    print(operation.value)
     print("Tested {0}k SET & GET (each 50%) operations took: {1} seconds... {2} operations per second".format(int(args["-n"]) / 1000, t2, int(args["-n"]) / t2 * 2))

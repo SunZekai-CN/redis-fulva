@@ -380,7 +380,7 @@ benchmark:
 	@echo ""
 	@echo " *******test start********"
 	@echo ""
-	python benchmarks/test.py -p 7001 -n 10000 -c 100 --timeit
+	python benchmarks/test.py -p 7001 -n 10000000 -c 100 --timeit
 	@echo ""
 	@echo "********test end*********"
 	@echo ""
@@ -399,7 +399,7 @@ start-test:
 	@echo ""
 	@echo "**********start loading keys*******************"
 	@echo ""
-	python benchmarks/input.py -p 7001 -n 10000
+	python benchmarks/input.py -p 7001 -n 10000000
 	@echo ""
 	@echo "***********keys are loaded*********************"
 	@echo ""

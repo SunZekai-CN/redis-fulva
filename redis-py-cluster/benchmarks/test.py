@@ -54,32 +54,38 @@ def loop(rc, reset_last_key=None):
         time.sleep(0.05)
 
 
-def timeit(rc,num,operation):
+def timeit(rc,num,operation,share_lock):
     """
     Time how long it take to run a number of set/get:s
     """
     for i in range(0,num):  # noqa
-        s = "foo{0}".format(i)
+        key=random.randint(0,10000-1)
+        s = "foo{0}".format(key)
         if random.uniform(0,1)>0.5:
-            rc.set(s, i)
+            rc.set(s, key)
         else:
             rc.get(s)
-        operation.value=operation.value+1
+        share_lock.acquire()
+        operation.value+=1
+        share_lock.release()
         
 
-def timeit_pipeline(rc, num,operation):
+def timeit_pipeline(rc, num,operation,share_lock):
     """
     Time how long it takes to run a number of set/get:s inside a cluster pipeline
     """
     for i in range(0, num):  # noqa
-        s = "foo{0}".format(i)
+        key=random.randint(0,10000-1)
+        s = "foo{0}".format(key)
         p = rc.pipeline()
         if random.uniform(0,1)>0.5:
             p.set(s, i)
         else: 
             p.get(s)
         p.execute()
-        operation.value=operation.value+1
+        share_lock.acquire()
+        operation.value+=1
+        share_lock.release()
         
  
 
@@ -89,11 +95,12 @@ def monitor(mydict,operation):
     flag=0
     while (1):
         time.sleep(1)
-        if last==operation.value:
+        now=operation.value
+        if last==now:
             break
-        mydict["{0}second".format(existing)]=str((operation.value-last)*2)
+        mydict["{0}second".format(existing)]=str((now-last)*2)
         existing=existing+1
-        last=operation.value
+        last=now
        
 if __name__ == "__main__":
     args = docopt(__doc__, version="0.3.1")
@@ -108,18 +115,19 @@ if __name__ == "__main__":
     processes = []
     operation=multiprocessing.Manager().Value('i',0)
     mydict=multiprocessing.Manager().dict()
+    share_lock = multiprocessing.Manager().Lock()
     single_request = int(args["-n"]) // int(args["-c"])
+    p = multiprocessing.Process(target=monitor,args=(mydict,operation))
+    processes.append(p)
     for j in range(int(args["-c"])):
         if args["--timeit"]:
             if args["--pipeline"]:
-                p = multiprocessing.Process(target=timeit_pipeline, args=(rc, single_request,operation))
+                p = multiprocessing.Process(target=timeit_pipeline, args=(rc, single_request,operation,share_lock))
             else:
-                p = multiprocessing.Process(target=timeit, args=(rc, single_request,operation))
+                p = multiprocessing.Process(target=timeit, args=(rc, single_request,operation,share_lock))
         else:
             p = multiprocessing.Process(target=loop, args=(rc, args["--resetlastkey"]))
         processes.append(p)
-    p = multiprocessing.Process(target=monitor,args=(mydict,operation))
-    processes.append(p)
     t1=time.time()
     for p in processes:
         p.start()
@@ -128,5 +136,4 @@ if __name__ == "__main__":
     t2 = time.time() - t1
     with open('result.csv', 'w') as f:
         [f.write('{0},{1}\n'.format(key, value)) for key, value in mydict.items()]
-    print(operation.value)
-    print("Tested {0}k SET & GET (each 50%) operations took: {1} seconds... {2} operations per second".format(int(args["-n"]) / 1000, t2, int(args["-n"]) / t2 * 2))
+    print("Tested {0}k operations took: {1} seconds... {2} operations per second".format(int(args["-n"]) / 1000, t2, int(args["-n"]) / t2 * 2))

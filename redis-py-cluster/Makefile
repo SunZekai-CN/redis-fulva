@@ -376,11 +376,27 @@ redis-install:
 	gem install redis
 	sleep 3
 
-benchmark:
+tput:
 	@echo ""
 	@echo " *******test start********"
 	@echo ""
-	python benchmarks/test.py -p 7001 -n 10000000 -c 20
+	python benchmarks/tput.py -p 7001 -n 10000000 -c 20
+	@echo ""
+	@echo "********test end*********"
+	@echo ""
+average:
+	@echo ""
+	@echo " *******test start********"
+	@echo ""
+	python benchmarks/average.py -p 7001 -n 10000000 -c 20
+	@echo ""
+	@echo "********test end*********"
+	@echo ""
+tail:
+	@echo ""
+	@echo " *******test start********"
+	@echo ""
+	python benchmarks/tail.py -p 7001 -n 10000000 -c 20
 	@echo ""
 	@echo "********test end*********"
 	@echo ""

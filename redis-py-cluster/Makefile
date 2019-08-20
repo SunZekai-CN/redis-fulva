@@ -380,7 +380,7 @@ benchmark:
 	@echo ""
 	@echo " *******test start********"
 	@echo ""
-	python benchmarks/test.py -p 7001 -n 1000000 -c 20
+	python benchmarks/test.py -p 7001 -n 10000000 -c 20
 	@echo ""
 	@echo "********test end*********"
 	@echo ""

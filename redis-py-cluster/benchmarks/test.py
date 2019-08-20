@@ -32,7 +32,7 @@ def timeit(rc,num):
     for i in range(0,num):  # noqa
         key=random.randint(0,1000000-1)
         s = "foo{0}".format(key)
-        if random.uniform(0,1)>0.5:
+        if random.uniform(0,1)>0.05:
             rc.set(s, key)
         else:
             rc.get(s)       

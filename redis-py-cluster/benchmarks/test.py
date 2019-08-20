@@ -30,7 +30,7 @@ def timeit(rc,num):
     Time how long it take to run a number of set/get:s
     """
     for i in range(0,num):  # noqa
-        key=random.randint(0,10000-1)
+        key=random.randint(0,1000000-1)
         s = "foo{0}".format(key)
         if random.uniform(0,1)>0.5:
             rc.set(s, key)
@@ -46,19 +46,44 @@ def timeit_tput(rc,num,tput):
     operation=0
     last=0
     for i in range(0,num):  # noqa
-        key=random.randint(0,10000-1)
+        key=random.randint(0,1000000-1)
         s = "foo{0}".format(key)
         if random.uniform(0,1)>0.5:
             rc.set(s, key)
         else:
             rc.get(s)
         operation+=1
-        if time.time()==start+existing+1:
+        if time.time()>=start+existing+1:
             tput[existing]=operation-last
             existing+=1
             last=operation
     tput[existing]=operation-last
     
+def timeit_pipeline_tput(rc, num,tput):
+    """
+    Time how long it takes to run a number of set/get:s inside a cluster pipeline
+    """
+    start=time.time()
+    existing=0
+    operation=0
+    last=0
+    for i in range(0, num):  # noqa
+        key=random.randint(0,10000-1)
+        s = "foo{0}".format(key)
+        p = rc.pipeline()
+        if random.uniform(0,1)>0.5:
+            p.set(s, i)
+        else:
+            p.get(s)
+        p.execute()
+        operation+=1
+        if time.time()>=start+existing+1:
+            tput[existing]=operation-last
+            existing+=1
+            last=operation
+    tput[existing]=operation-last
+
+
 
 def timeit_pipeline(rc, num):
     """
@@ -95,7 +120,7 @@ if __name__ == "__main__":
             p = multiprocessing.Process(target=timeit, args=(rc, single_request))
         processes.append(p)
     if args["--pipeline"]:
-        p = multiprocessing.Process(target=timeit_pipeline, args=(rc, single_request,tput))
+        p = multiprocessing.Process(target=timeit_pipeline_tput, args=(rc, single_request,tput))
     else:
         p = multiprocessing.Process(target=timeit_tput, args=(rc, single_request,tput))
     processes.append(p)
@@ -106,5 +131,5 @@ if __name__ == "__main__":
         p.join()
     t2 = time.time() - t1
     for value in tput.values():
-        print(value*int(args["-c"]), end="\n")
+        print(value*int(args["-c"])*2)
     print("Tested {0}k operations took: {1} seconds... {2} operations per second".format(int(args["-n"]) / 1000, t2, int(args["-n"]) / t2 * 2))

@@ -1,4 +1,4 @@
-PATH := ./redis-git/src:${PATH}
+paTH := ./redis-git/src:${PATH}
 
 # CLUSTER REDIS NODES
 define REDIS_CLUSTER_NODE1_CONF
@@ -380,26 +380,30 @@ benchmark:
 	@echo ""
 	@echo " *******test start********"
 	@echo ""
-	python benchmarks/test.py -p 7001 -n 10000000 -c 100 --timeit
+	python benchmarks/test.py -p 7001 -n 1000000 -c 20
 	@echo ""
 	@echo "********test end*********"
 	@echo ""
 migrate:
-	sleep 1
+	sleep 20
 	@echo ""
 	@echo "********migration start*********"
-	echo yes|redis-cli --cluster reshard 127.0.0.1:7003 --cluster-from all --cluster-to 55ddea4eaa7a02715e074a4718c39d211309b2c3 --cluster-slots 8192
+	@echo ""
+	echo yes|../redis/redis-5.0.5/src/redis-cli --cluster reshard 127.0.0.1:7003 --cluster-from all --cluster-to f5bd0df70aae9d7b16ce43703401106da1b838a0 --cluster-slots 8192
+	@echo ""
 	@echo "*********migration end**********"
 start-test:
 	@echo ""
 	@echo "Initialize the test environment"
+	@echo ""
 	python benchmarks/clean.py -p 7001
-	echo yes|redis-cli --cluster reshard 127.0.0.1:7001 --cluster-from all --cluster-to f94fcb83dba57404971444c75b7923a7492b573e --cluster-slots 8192 
+	echo yes|../redis/redis-5.0.5/src/redis-cli --cluster reshard 127.0.0.1:7001 --cluster-from all --cluster-to 5e3fb820e2bbcf24328ce3ff04e069d6b087b354 --cluster-slots 8192 
+	@echo ""
 	@echo "**********the test environment is reday*********"
 	@echo ""
 	@echo "**********start loading keys*******************"
 	@echo ""
-	python benchmarks/input.py -p 7001 -n 10000000
+	python benchmarks/input.py -p 7001 -n 1000000
 	@echo ""
 	@echo "***********keys are loaded*********************"
 	@echo ""

@@ -3230,7 +3230,7 @@ static redisReply *clusterManagerMigrateKeysInReply(clusterManagerNode *source,
     void *_reply = NULL;
     redisAppendCommandArgv(source->context,argc,
                            (const char**)argv,argv_len);
-    int success = (redisGetReply(source->context, &_reply) == REDIS_MIGRATION);
+    int success = (redisGetReply(source->context, &_reply) == REDIS_OK);
     for (i = 0; i < reply->elements; i++) sdsfree(argv[i + offset]);
     if (!success) goto cleanup;
     migrate_reply = (redisReply *) _reply;

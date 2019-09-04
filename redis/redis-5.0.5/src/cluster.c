@@ -3591,6 +3591,28 @@ void clusterCron(void) {
  * reaction to events fired but that are not safe to perform inside event
  * handlers, or to perform potentially expansive tasks that we need to do
  * a single time before replying to clients. */
+    int migrating_flag=0;
+    //non-blocking get the ACK of restore command
+int migrate_feedback(int fd, char *ptr, ssize_t size)
+{
+    ssize_t nread = 0;
+    size--;
+    while(size) {
+        char c;
+        if (read(fd,&c,1) <=0) return -1;
+        if (c == '\n') {
+            *ptr = '\0';
+            if (nread && *(ptr-1) == '\r') *(ptr-1) = '\0';
+            return nread;
+        } else {
+            *ptr++ = c;
+            *ptr = '\0';
+            nread++;
+        }
+        size--;
+    }
+    return nread;
+}
 void clusterBeforeSleep(void) {
     /* Handle failover, this is needed when it is likely that there is already
      * the quorum from masters in order to react fast. */
@@ -3607,7 +3629,6 @@ void clusterBeforeSleep(void) {
                     CLUSTER_TODO_FSYNC_CONFIG;
         clusterSaveConfigOrDie(fsync);
     }
-
     /* Reset our flags (not strictly needed since every single function
      * called for flags set should be able to clear its flag). */
     server.cluster->todo_before_sleep = 0;
@@ -5067,7 +5088,108 @@ void migrateCloseTimedoutSockets(void) {
     char *buf0; /* Auth reply. */
     char *buf1; /* Select reply. */
     char *buf2; /* Restore reply. */
-    int migrating_flag=0;
+    /* Read the RESTORE replies. */
+    int error_from_target = 0;
+    int del_idx = 1; /* Index of the key argument for the replicated DEL op. */
+    int select_kind;
+
+void finish_migration()
+{
+    if(location==0){
+    /* Read the AUTH reply if needed. */
+        if (password&&(migrate_feedback(cs->fd, buf0, sizeof(buf0))<0) )
+            return;
+    /* Read the SELECT reply if needed. */
+        if (select_kind&&(migrate_feedback(cs->fd, buf1, sizeof(buf1))<0) )
+            return;
+    }
+
+    /* Allocate the new argument vector that will replace the current command,
+     * to propagate the MIGRATE as a DEL command (if no COPY option was given).
+     * We allocate num_keys+1 because the additional argument is for "DEL"
+     * command name itself. */
+
+    for (; location < num_keys; location++) {
+        if (migrate_feedback(cs->fd, buf2, sizeof(buf2)) < 0) {
+            return;
+        }
+        if ((password && buf0[0] == '-') ||
+            (select_kind && buf1[0] == '-') ||
+            buf2[0] == '-')
+        {
+            /* On error assume that last_dbid is no longer valid. */
+            if (!error_from_target) {
+                cs->last_dbid = -1;
+                char *errbuf;
+                if (password && buf0[0] == '-') errbuf = buf0;
+                else if (select_kind && buf1[0] == '-') errbuf = buf1;
+                else errbuf = buf2;
+
+                error_from_target = 1;
+                addReplyErrorFormat(migrateing_client,"Target instance replied with error: %s",
+                    errbuf+1);
+            }
+        } else {
+            if (!copy) {
+                /* No COPY option: remove the local key, signal the change. */
+                dbDelete(migrateing_client->db,kv[location]);
+                signalModifiedKey(migrateing_client->db,kv[location]);
+                server.dirty++;
+
+                /* Populate the argument vector to replace the old one. */
+                newargv[del_idx++] = kv[location];
+                incrRefCount(kv[location]);
+            }
+        }
+    }
+    if(location==num_keys){
+         
+    /* On socket error, if we want to retry, do it now before rewriting the
+     * command vector. We only retry if we are sure nothing was processed
+     * and we failed to read the first reply (j == 0 test). */
+        migrating_flag=0;
+        if (!error_from_target  && location == 0 && may_retry &&
+            errno != ETIMEDOUT)
+        {
+             zfree(ov); zfree(kv);
+            return;
+        }
+
+        if (!copy) {
+            /* Translate MIGRATE as DEL for replication/AOF. Note that we do
+            * this only for the keys for which we received an acknowledgement
+            * from the receiving Redis server, by using the del_idx index. */
+            if (del_idx > 1) {
+                newargv[0] = createStringObject("DEL",3);
+                /* Note that the following call takes ownership of newargv. */
+                replaceClientCommandVector(migrateing_client,del_idx,newargv);
+            } else {
+                /* No key transfer acknowledged, no need to rewrite as DEL. */
+                zfree(newargv);
+            }
+            newargv = NULL; /* Make it safe to call zfree() on it in the future. */
+        }
+
+        if (!error_from_target) {
+            /* Success! Update the last_dbid in migrateCachedSocket, so that we can
+             * avoid SELECT the next time if the target DB is the same. Reply +OK.
+            *
+            * Note: If we reached this point, even if socket_error is true
+            * still the SELECT command succeeded (otherwise the code jumps to
+            * socket_err label. */
+            cs->last_dbid = dbid;
+            addReply(migrateing_client,shared.ok);
+            migrateing_client=NULL;
+        } else {
+            /* On error we already sent it in the for loop above, and set
+            * the currently selected socket to -1 to force SELECT the next time. */
+                 }
+        zfree(ov); zfree(kv); zfree(newargv);
+    }
+    return;
+}
+
+
 
 void migrateCommand(client *c) {
     migrateing_client=c;
@@ -5082,10 +5204,13 @@ void migrateCommand(client *c) {
     write_error=0;
     num_keys=1;
     location=0;
-    buf0=zmalloc(sizeof(char)*1024);
-    buf1=zmalloc(sizeof(char)*1024);
-    buf2=zmalloc(sizeof(char)*1024);
+    buf0=zmalloc(sizeof(char*)*1024);
+    buf1=zmalloc(sizeof(char*)*1024);
+    buf2=zmalloc(sizeof(char*)*1024);
     migrating_flag=1;
+        /* Read the RESTORE replies. */
+    error_from_target = 0;
+    del_idx = 1; /* Index of the key argument for the replicated DEL op. */
     /* To support the KEYS option we need the following additional state. */
     int first_key = 3; /* Argument index of the first key. */
      /* By default only migrate the 'key' argument. */
@@ -5171,8 +5296,8 @@ try_again:
     }
 
     /* Send the SELECT command if the current DB is not already selected. */
-    int select = cs->last_dbid != dbid; /* Should we emit SELECT? */
-    if (select) {
+    select_kind = cs->last_dbid != dbid; /* Should we emit SELECT? */
+    if (select_kind) {
         serverAssertWithInfo(c,NULL,rioWriteBulkCount(&cmd,'*',2));
         serverAssertWithInfo(c,NULL,rioWriteBulkString(&cmd,"SELECT",6));
         serverAssertWithInfo(c,NULL,rioWriteBulkLongLong(&cmd,dbid));
@@ -5248,7 +5373,8 @@ try_again:
             pos += nwritten;
         }
     }
-
+while(migrating_flag)finish_migration();
+return;
 /* On socket errors we try to close the cached socket and try again.
  * It is very common for the cached socket to get closed, if just reopening
  * it works it's a shame to notify the error to the caller. */
@@ -5270,128 +5396,6 @@ socket_err:
         sdscatprintf(sdsempty(),
             "-IOERR error or timeout %s to target instance\r\n",
             write_error ? "writing" : "reading"));
-    return;
-}
-//non-blocking get the ACK of restore command
-int migrate_feedback(int fd, char *ptr, ssize_t size)
-{
-    ssize_t nread = 0;
-    size--;
-    while(size) {
-        char c;
-        if (Read(fd,&c,1) <=0) return -1;
-        if (c == '\n') {
-            *ptr = '\0';
-            if (nread && *(ptr-1) == '\r') *(ptr-1) = '\0';
-            return nread;
-        } else {
-            *ptr++ = c;
-            *ptr = '\0';
-            nread++;
-        }
-        size--;
-    }
-    return nread;
-}
-void finish_migration()
-{
-    int argv_rewritten = 0;
-
-    client *c;
-    c=migrateing_client;
-    if(location==0){
-    /* Read the AUTH reply if needed. */
-        if (password&&(migrate_feedback(cs->fd, buf0, sizeof(buf0))<0) )
-            return;
-    /* Read the SELECT reply if needed. */
-        if (select&&(migrate_feedback(cs->fd, buf1, sizeof(buf1))<0) )
-            return;
-    }
-    /* Read the RESTORE replies. */
-    int error_from_target = 0;
-    int del_idx = 1; /* Index of the key argument for the replicated DEL op. */
-
-    /* Allocate the new argument vector that will replace the current command,
-     * to propagate the MIGRATE as a DEL command (if no COPY option was given).
-     * We allocate num_keys+1 because the additional argument is for "DEL"
-     * command name itself. */
-
-    for (; location < num_keys; location++) {
-        if (migrate_feedback(cs->fd, buf2, sizeof(buf2)) < 0) {
-            return;
-        }
-        if ((password && buf0[0] == '-') ||
-            (select && buf1[0] == '-') ||
-            buf2[0] == '-')
-        {
-            /* On error assume that last_dbid is no longer valid. */
-            if (!error_from_target) {
-                cs->last_dbid = -1;
-                char *errbuf;
-                if (password && buf0[0] == '-') errbuf = buf0;
-                else if (select && buf1[0] == '-') errbuf = buf1;
-                else errbuf = buf2;
-
-                error_from_target = 1;
-                addReplyErrorFormat(c,"Target instance replied with error: %s",
-                    errbuf+1);
-            }
-        } else {
-            if (!copy) {
-                /* No COPY option: remove the local key, signal the change. */
-                dbDelete(c->db,kv[location]);
-                signalModifiedKey(c->db,kv[location]);
-                server.dirty++;
-
-                /* Populate the argument vector to replace the old one. */
-                newargv[del_idx++] = kv[location];
-                incrRefCount(kv[location]);
-            }
-        }
-    }
-    if(location==num_keys){
-    /* On socket error, if we want to retry, do it now before rewriting the
-     * command vector. We only retry if we are sure nothing was processed
-     * and we failed to read the first reply (j == 0 test). */
-        migrating_flag=0;
-        if (!error_from_target  && location == 0 && may_retry &&
-            errno != ETIMEDOUT)
-        {
-             zfree(ov); zfree(kv);
-            return;
-        }
-
-        if (!copy) {
-            /* Translate MIGRATE as DEL for replication/AOF. Note that we do
-            * this only for the keys for which we received an acknowledgement
-            * from the receiving Redis server, by using the del_idx index. */
-            if (del_idx > 1) {
-                newargv[0] = createStringObject("DEL",3);
-                /* Note that the following call takes ownership of newargv. */
-                replaceClientCommandVector(c,del_idx,newargv);
-                argv_rewritten = 1;
-            } else {
-                /* No key transfer acknowledged, no need to rewrite as DEL. */
-                zfree(newargv);
-            }
-            newargv = NULL; /* Make it safe to call zfree() on it in the future. */
-        }
-
-        if (!error_from_target) {
-            /* Success! Update the last_dbid in migrateCachedSocket, so that we can
-             * avoid SELECT the next time if the target DB is the same. Reply +OK.
-            *
-            * Note: If we reached this point, even if socket_error is true
-            * still the SELECT command succeeded (otherwise the code jumps to
-            * socket_err label. */
-            cs->last_dbid = dbid;
-            addReply(c,shared.migrate);
-        } else {
-            /* On error we already sent it in the for loop above, and set
-            * the currently selected socket to -1 to force SELECT the next time. */
-                 }
-        zfree(ov); zfree(kv); zfree(newargv);
-    }
     return;
 }
 /* -----------------------------------------------------------------------------

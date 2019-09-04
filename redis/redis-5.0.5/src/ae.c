@@ -43,7 +43,7 @@
 #include "ae.h"
 #include "zmalloc.h"
 #include "config.h"
-#include "cluster.c"
+
 /* Include the best multiplexing layer supported by this system.
  * The following should be ordered by performances, descending. */
 #ifdef HAVE_EVPORT
@@ -499,7 +499,6 @@ void aeMain(aeEventLoop *eventLoop) {
         if (eventLoop->beforesleep != NULL)
             eventLoop->beforesleep(eventLoop);
         aeProcessEvents(eventLoop, AE_ALL_EVENTS|AE_CALL_AFTER_SLEEP);
-        if(migrating_flag)finish_migration();
     }
 }
 

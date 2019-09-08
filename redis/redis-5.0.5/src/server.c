@@ -3510,6 +3510,7 @@ int processCommand(client *c) {
         queueMultiCommand(c);
         addReply(c,shared.queued);
     } else {
+        if(double_request)double_request=0;
         call(c,CMD_CALL_FULL);
         //need double-request
         if(double_request){
@@ -3517,7 +3518,6 @@ int processCommand(client *c) {
             int error_code;
             clusterNode *n = getNodeByQuery(c,c->cmd,c->argv,c->argc,
                                         &hashslot,&error_code);
-            double_request=0;
             flagTransaction(c);
             clusterRedirectClient(c,n,hashslot,error_code);
         }

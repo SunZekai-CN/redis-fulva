@@ -5608,12 +5608,15 @@ clusterNode *getNodeByQuery(client *c, struct redisCommand *cmd, robj **argv, in
     }
     if(migrating_slot&&cmd->proc==getCommand)
     {
-        if (error_code) *error_code = CLUSTER_REDIR_ASK;
         if(double_request)
         {
-            return server.cluster->slots[slot];
+            return myself;
         }
-        else  return server.cluster->migrating_slots_to[slot];
+        else 
+        { 
+            if (error_code) *error_code = CLUSTER_REDIR_ASK;
+            return server.cluster->migrating_slots_to[slot];
+        }
     }
 
     if (migrating_slot && missing_keys) {

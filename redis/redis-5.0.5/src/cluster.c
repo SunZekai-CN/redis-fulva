@@ -5602,9 +5602,13 @@ clusterNode *getNodeByQuery(client *c, struct redisCommand *cmd, robj **argv, in
 
     //fulva send set to target
     if(migrating_slot&&cmd->proc==setCommand)
+    {
+        if (error_code) *error_code = CLUSTER_REDIR_ASK;
         return server.cluster->migrating_slots_to[slot];
+    }
     if(migrating_slot&&cmd->proc==getCommand)
     {
+        if (error_code) *error_code = CLUSTER_REDIR_ASK;
         if(double_request)
         {
             return server.cluster->slots[slot];

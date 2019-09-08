@@ -148,5 +148,5 @@ if __name__ == "__main__":
         p.join()
     t2 = time.time() - t1
     for value in average.values():
-        print(value)
+        print(value*1000000)
     print("Tested {0}k operations took: {1} seconds... {2} operations per second".format(int(args["-n"]) / 1000, t2, int(args["-n"]) / t2 * 2))

@@ -29,7 +29,7 @@
 
 #include "server.h"
 #include <math.h> /* isnan(), isinf() */
-
+#include "cluster.h"
 /*-----------------------------------------------------------------------------
  * String Commands
  *----------------------------------------------------------------------------*/
@@ -158,8 +158,10 @@ int getGenericCommand(client *c) {
     robj *o;
 
     if ((o = lookupKeyReadOrReply(c,c->argv[1],shared.null[c->resp])) == NULL)
-        return C_OK;
-
+       {
+           double_request=1;
+            return C_OK;
+       }
     if (o->type != OBJ_STRING) {
         addReply(c,shared.wrongtypeerr);
         return C_ERR;

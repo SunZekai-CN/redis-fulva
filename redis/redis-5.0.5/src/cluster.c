@@ -5569,7 +5569,7 @@ clusterNode *getNodeByQuery(client *c, struct redisCommand *cmd, robj **argv, in
             }
 
             /* Migarting / Improrting slot? Count keys we don't have. */
-            if ((migrating_slot || importing_slot) &&
+            if ((migrating_slot || importing_slot) &&(cmd->proc!=setCommand)&&(cmd->proc!=getCommand)&&
                 lookupKeyRead(&server.db[0],thiskey) == NULL)
             {
                 missing_keys++;
@@ -5599,6 +5599,19 @@ clusterNode *getNodeByQuery(client *c, struct redisCommand *cmd, robj **argv, in
 
     /* If we don't have all the keys and we are migrating the slot, send
      * an ASK redirection. */
+
+    //fulva send set to target
+    if(migrating_slot&&cmd->proc==setCommand)
+        return server.cluster->migrating_slots_to[slot];
+    if(migrating_slot&&cmd->proc==getCommand)
+    {
+        if(double_request)
+        {
+            return server.cluster->slots[slot];
+        }
+        else  return server.cluster->migrating_slots_to[slot];
+    }
+
     if (migrating_slot && missing_keys) {
         if (error_code) *error_code = CLUSTER_REDIR_ASK;
         return server.cluster->migrating_slots_to[slot];

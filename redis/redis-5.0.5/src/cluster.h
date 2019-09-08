@@ -286,5 +286,5 @@ typedef struct {
 clusterNode *getNodeByQuery(client *c, struct redisCommand *cmd, robj **argv, int argc, int *hashslot, int *ask);
 int clusterRedirectBlockedClientIfNeeded(client *c);
 void clusterRedirectClient(client *c, clusterNode *n, int hashslot, int error_code);
-int double_request=0;
+static int double_request=0;
 #endif /* __CLUSTER_H */

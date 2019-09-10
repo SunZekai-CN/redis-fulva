@@ -3510,17 +3510,7 @@ int processCommand(client *c) {
         queueMultiCommand(c);
         addReply(c,shared.queued);
     } else {
-        if(double_request)double_request=0;
         call(c,CMD_CALL_FULL);
-        //need double-request
-        if(double_request){
-            int hashslot;
-            int error_code;
-            clusterNode *n = getNodeByQuery(c,c->cmd,c->argv,c->argc,
-                                        &hashslot,&error_code);
-            flagTransaction(c);
-            clusterRedirectClient(c,n,hashslot,error_code);
-        }
         c->woff = server.master_repl_offset;
         if (listLength(server.ready_keys))
             handleClientsBlockedOnKeys();
@@ -4748,7 +4738,6 @@ int redisIsSupervised(int mode) {
 int main(int argc, char **argv) {
     struct timeval tv;
     int j;
-
 #ifdef REDIS_TEST
     if (argc == 3 && !strcasecmp(argv[1], "test")) {
         if (!strcasecmp(argv[2], "ziplist")) {

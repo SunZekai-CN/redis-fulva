@@ -55,7 +55,7 @@
 #include "help.h"
 #include "anet.h"
 #include "ae.h"
-
+#include "redis-cli.h"
 #define UNUSED(V) ((void) V)
 
 #define OUTPUT_STANDARD 0
@@ -1113,7 +1113,121 @@ static int cliReadReply(int output_raw_strings) {
     freeReplyObject(reply);
     return REDIS_OK;
 }
+unsigned int keyHashSlot(char *key, int keylen) {
+    int s, e; /* start-end indexes of { and } */
 
+    for (s = 0; s < keylen; s++)
+        if (key[s] == '{') break;
+
+    /* No '{' ? Hash the whole key. This is the base case. */
+    if (s == keylen) return crc16(key,keylen) & 0x3FFF;
+
+    /* '{' found? Check if we have the corresponding '}'. */
+    for (e = s+1; e < keylen; e++)
+        if (key[e] == '}') break;
+
+    /* No '}' or nothing between {} ? Hash the whole key. */
+    if (e == keylen || e == s+1) return crc16(key,keylen) & 0x3FFF;
+
+    /* If we are here there is both a { and a } on its right. Hash
+     * what is in the middle between { and }. */
+    return crc16(key+s+1,e-s-1) & 0x3FFF;
+}
+migrating_slot pairs={0,0,NULL,0,NULL,0};
+static int redirect()
+{
+    if ((!strcasecmp(context->tcp.host,pairs.target_ip))&&(context->tcp.port==pairs.target_port))
+        return 0;
+    sdsfree(config.hostip);
+    config.hostip = sdsnew(pairs.target_ip);
+    config.hostport = pairs.target_port;
+     config.cluster_reissue_command = 1;
+    cliRefreshPrompt();
+    return 1;
+}
+
+static int redisGetdoubleReply(redisContext *source,redisContext *target, void **reply_source,void **reply_target) {
+    int wdone_source = 0;
+    void *aux_source = NULL;
+    int wdone_target = 0;
+    void *aux_target = NULL;
+
+    /* Try to read pending replies */
+    if( (redisGetReplyFromReader(source,&aux_source) == REDIS_ERR)||(redisGetReplyFromReader(target,&aux_target)==REDIS_ERR))
+        return REDIS_ERR;
+
+    /* For the blocking context, flush output buffer and read reply */
+    if ((aux_source == NULL && source->flags & REDIS_BLOCK)&&((aux_target == NULL && target->flags & REDIS_BLOCK))) {
+        /* Write until done */
+        do {
+            if ((!wdone_source)&&(redisBufferWrite(source,&wdone_source) == REDIS_ERR))
+                return REDIS_ERR;
+            if ((!wdone_target)&&(redisBufferWrite(target,&wdone_target) == REDIS_ERR))
+                return REDIS_ERR;
+        } while ((!wdone_source)||(!wdone_target));
+
+        /* Read until there is a reply */
+        do {
+            if (redisBufferRead(source) == REDIS_ERR)
+                return REDIS_ERR;
+            if (redisGetReplyFromReader(source,&aux_source) == REDIS_ERR)
+                return REDIS_ERR;
+            if (redisBufferRead(target) == REDIS_ERR)
+                return REDIS_ERR;
+            if (redisGetReplyFromReader(target,&aux_target) == REDIS_ERR)
+                return REDIS_ERR;
+        } while ((aux_source== NULL)||(aux_target==NULL));
+    }
+
+    /* Set reply object */
+    if (reply_source != NULL) *reply_source = aux_source;
+    if (reply_target != NULL) *reply_target = aux_target;
+    return REDIS_OK;
+}
+static int getreplydoublerequest(redisContext*source,redisContext*target)
+{
+     void *_reply_source,*_reply_target;
+    redisReply *reply,*reply_source,*reply_target;
+    sds out = NULL;
+
+    if (redisGetdoubleReply(source,target,&_reply_source,&_reply_target) != REDIS_OK) {
+        if (config.shutdown) {
+            redisFree(context);
+            context = NULL;
+            return REDIS_OK;
+        }
+        if (config.interactive) {
+            /* Filter cases where we should reconnect */
+            if (context->err == REDIS_ERR_IO &&
+                (errno == ECONNRESET || errno == EPIPE))
+                return REDIS_ERR;
+            if (context->err == REDIS_ERR_EOF)
+                return REDIS_ERR;
+        }
+        cliPrintContextError();
+        exit(1);
+        return REDIS_ERR; /* avoid compiler warning */
+    }
+    reply_source = (redisReply*)_reply_source;
+    reply_target = (redisReply*)_reply_target;
+    if(reply_target->type==REDIS_REPLY_NIL)
+    reply=reply_source;
+    else reply=reply_target;
+    config.last_cmd_type = reply->type;
+    if (config.output == OUTPUT_RAW) {
+        out = cliFormatReplyRaw(reply);
+        out = sdscat(out,"\n");
+    } else if (config.output == OUTPUT_STANDARD) {
+        out = cliFormatReplyTTY(reply,"");
+        } else if (config.output == OUTPUT_CSV) {
+        out = cliFormatReplyCSV(reply);
+        out = sdscat(out,"\n");
+        }
+    fwrite(out,sdslen(out),1,stdout);
+    sdsfree(out);
+    freeReplyObject(reply);
+    return REDIS_OK;
+}
 static int cliSendCommand(int argc, char **argv, long repeat) {
     char *command = argv[0];
     size_t *argvlen;
@@ -1182,50 +1296,81 @@ static int cliSendCommand(int argc, char **argv, long repeat) {
 
     /* Negative repeat is allowed and causes infinite loop,
        works well with the interval option. */
-    while(repeat < 0 || repeat-- > 0) {
-        redisAppendCommandArgv(context,argc,(const char**)argv,argvlen);
-        while (config.monitor_mode) {
-            if (cliReadReply(output_raw) != REDIS_OK) exit(1);
-            fflush(stdout);
-        }
-
-        if (config.pubsub_mode) {
-            if (config.output != OUTPUT_RAW)
-                printf("Reading messages... (press Ctrl-C to quit)\n");
-            while (1) {
-                if (cliReadReply(output_raw) != REDIS_OK) exit(1);
+    while(repeat < 0 || repeat-- > 0) { 
+        if (!strcasecmp(command,"set") &&pairs.flag&&(pairs.slot==keyHashSlot(argv[1],strlen(argv[1])))&&(redirect()))
+            break;
+        if (!strcasecmp(command,"get")&&pairs.flag&&(pairs.slot==keyHashSlot(argv[1],strlen(argv[1]))))
+        {
+            redisContext *source,*target;
+            int flag;
+             if ((!strcasecmp(context->tcp.host,pairs.target_ip))&&(context->tcp.port==pairs.target_port))
+             {
+                target=context;
+                flag=1;
+                source=redisConnect(pairs.source_ip,pairs.source_port);
+             }
+            else if ((!strcasecmp(context->tcp.host,pairs.source_ip))&&(context->tcp.port==pairs.source_port))
+            {
+                source=context;
+                flag=0;
+                target=redisConnect(pairs.target_ip,pairs.target_port);
             }
+            else {
+                redirect();
+                break;
+                }      
+            redisAppendCommandArgv(source,argc,(const char**)argv,argvlen);
+            redisAppendCommandArgv(target,argc,(const char**)argv,argvlen);
+            if(getreplydoublerequest(source,target)!=REDIS_OK)
+                printf("something wrong with double-request!\n");
+            if(flag)redisFree(source);
+            else redisFree(target);   
         }
+        else
+        {
+            redisAppendCommandArgv(context,argc,(const char**)argv,argvlen);
+            while (config.monitor_mode) {
+                if (cliReadReply(output_raw) != REDIS_OK) exit(1);
+                fflush(stdout);
+           }
 
-        if (config.slave_mode) {
-            printf("Entering replica output mode...  (press Ctrl-C to quit)\n");
-            slaveMode();
-            config.slave_mode = 0;
-            zfree(argvlen);
-            return REDIS_ERR;  /* Error = slaveMode lost connection to master */
-        }
+            if (config.pubsub_mode) {
+                if (config.output != OUTPUT_RAW)
+                    printf("Reading messages... (press Ctrl-C to quit)\n");
+                while (1) {
+                    if (cliReadReply(output_raw) != REDIS_OK) exit(1);
+                }
+         }
 
-        if (cliReadReply(output_raw) != REDIS_OK) {
-            zfree(argvlen);
-            return REDIS_ERR;
-        } else {
+            if (config.slave_mode) {
+                printf("Entering replica output mode...  (press Ctrl-C to quit)\n");
+                slaveMode();
+                config.slave_mode = 0;
+                zfree(argvlen);
+                return REDIS_ERR;  /* Error = slaveMode lost connection to master */
+            }
+
+            if (cliReadReply(output_raw) != REDIS_OK) {
+                zfree(argvlen);
+                return REDIS_ERR;
+          } else {
             /* Store database number when SELECT was successfully executed. */
-            if (!strcasecmp(command,"select") && argc == 2 && config.last_cmd_type != REDIS_REPLY_ERROR) {
-                config.dbnum = atoi(argv[1]);
-                cliRefreshPrompt();
-            } else if (!strcasecmp(command,"auth") && argc == 2) {
-                cliSelect();
+                if (!strcasecmp(command,"select") && argc == 2 && config.last_cmd_type != REDIS_REPLY_ERROR) {
+                    config.dbnum = atoi(argv[1]);
+                    cliRefreshPrompt();
+              } else if (!strcasecmp(command,"auth") && argc == 2) {
+                    cliSelect();
+                }
             }
         }
         if (config.cluster_reissue_command){
-            /* If we need to reissue the command, break to prevent a
-               further 'repeat' number of dud interations */
-            break;
+        /* If we need to reissue the command, break to prevent a
+           further 'repeat' number of dud interations */
+                  break;
         }
-        if (config.interval) usleep(config.interval);
+         if (config.interval) usleep(config.interval);
         fflush(stdout); /* Make it grep friendly */
     }
-
     zfree(argvlen);
     return REDIS_OK;
 }
@@ -3430,6 +3575,12 @@ static int clusterManagerMoveSlot(clusterManagerNode *source,
                                         "migrating", err);
         if (!success) return 0;
     }
+    pairs.flag=1;
+    pairs.slot=slot;
+    pairs.source_ip=sdsnew(source->ip);
+    pairs.source_port=source->port;
+    pairs.target_ip=sdsnew(target->ip);
+    pairs.target_port=target->port;
     success = clusterManagerMigrateKeysInSlot(source, target, slot, timeout,
                                               pipeline, print_dots, err);
     if (!(opts & CLUSTER_MANAGER_OPT_QUIET)) printf("\n");
@@ -3446,6 +3597,7 @@ static int clusterManagerMoveSlot(clusterManagerNode *source,
                                                     "SETSLOT %d %s %s",
                                                     slot, "node",
                                                     target->name);
+            pairs.flag=0;
             success = (r != NULL);
             if (!success) return 0;
             if (r->type == REDIS_REPLY_ERROR) {
@@ -7641,7 +7793,7 @@ static void intrinsicLatencyMode(void) {
 
 int main(int argc, char **argv) {
     int firstarg;
-
+    
     config.hostip = sdsnew("127.0.0.1");
     config.hostport = 6379;
     config.hostsocket = NULL;

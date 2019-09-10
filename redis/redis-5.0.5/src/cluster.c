@@ -3631,6 +3631,7 @@ void clusterBeforeSleep(void) {
     }
     /* Reset our flags (not strictly needed since every single function
      * called for flags set should be able to clear its flag). */
+    while(migrating_flag)finish_migration();
     server.cluster->todo_before_sleep = 0;
 }
 
@@ -5373,7 +5374,6 @@ try_again:
             pos += nwritten;
         }
     }
-while(migrating_flag)finish_migration();
 return;
 /* On socket errors we try to close the cached socket and try again.
  * It is very common for the cached socket to get closed, if just reopening

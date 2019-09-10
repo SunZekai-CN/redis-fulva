@@ -34,7 +34,7 @@ def timeit(rc,num):
         key=random.randint(0,1000000-1)
         s = "foo{0}".format(key)
         if random.uniform(0,1)>0.5:
-            rc.set(s, key)
+            rc.get(s)
         else:
             rc.get(s)       
 
@@ -52,7 +52,7 @@ def timeit_tail(rc,num,tail):
         s = "foo{0}".format(key)
         if random.uniform(0,1)>0.5:
             begin=time.time()
-            rc.set(s, key)
+            rc.get(s)
             times.append(time.time()-begin)
         else:
             begin=time.time()

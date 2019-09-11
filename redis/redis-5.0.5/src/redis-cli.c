@@ -1133,7 +1133,7 @@ unsigned int keyHashSlot(char *key, int keylen) {
      * what is in the middle between { and }. */
     return crc16(key+s+1,e-s-1) & 0x3FFF;
 }
-migrating_slot pairs={1,2741,"127.0.0.1",7001,"127.0.0.1",7003};
+migrating_slot pairs={0,0,NULL,0,NULL,0};
 static int redirect()
 {
     if ((!strcasecmp(context->tcp.host,pairs.target_ip))&&(context->tcp.port==pairs.target_port))

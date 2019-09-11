@@ -3725,7 +3725,7 @@ void finish_migration()
             * socket_err label. */
             cs->last_dbid = dbid;
             addReply(migrateing_client,shared.ok);
-            migrateing_client=NULL;
+            resetClient(migrateing_client);
         } else {
             /* On error we already sent it in the for loop above, and set
             * the currently selected socket to -1 to force SELECT the next time. */

@@ -1587,7 +1587,7 @@ int processCommandAndResetClient(client *c) {
         if (!(c->flags & CLIENT_BLOCKED) ||
             c->btype != BLOCKED_MODULE)
         {
-            resetClient(c);
+            if(c->cmd->proc!=migrateCommand)resetClient(c);
         }
     }
     if (server.current_client == NULL) deadclient = 1;

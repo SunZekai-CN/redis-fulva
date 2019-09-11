@@ -388,7 +388,7 @@ average:
 	@echo ""
 	@echo " *******test start********"
 	@echo ""
-	python benchmarks/average.py -p 7001 -n 10000000 -c 20
+	python benchmarks/average.py -p 7001 -n 1000000 -c 20
 	@echo ""
 	@echo "********test end*********"
 	@echo ""
@@ -401,18 +401,17 @@ tail:
 	@echo "********test end*********"
 	@echo ""
 migrate:
-	sleep 20
 	@echo ""
 	@echo "********migration start*********"
 	@echo ""
-	echo yes|../redis/redis-5.0.5/src/redis-cli --cluster reshard 127.0.0.1:7003 --cluster-from all --cluster-to 9064feaefcf534f9376b9aa56c855cfe7a15a701 --cluster-slots 8192
+	echo yes|../redis/redis-5.0.5/src/redis-cli --cluster reshard 127.0.0.1:7003 --cluster-from all --cluster-to f790c23de9d14932de66e763354b3d7668ad29a1 --cluster-slots 1000
 	@echo ""
 	@echo "*********migration end**********"
 start-test:
 	@echo ""
 	@echo "Initialize the test environment"
 	@echo ""
-	echo yes|../redis/redis-5.0.5/src/redis-cli --cluster reshard 127.0.0.1:7001 --cluster-from all --cluster-to 77bfb1fbf5ddfb565e77d440fc9d50534f129862 --cluster-slots 8192 
+	echo yes|../redis/redis-5.0.5/src/redis-cli --cluster reshard 127.0.0.1:7001 --cluster-from all --cluster-to b53b944e884e1c90af6f7960f171dfcfafe984f9 --cluster-slots 11000 
 	@echo ""
 	@echo "**********the test environment is reday*********"
 	@echo ""

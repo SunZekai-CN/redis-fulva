@@ -1133,7 +1133,7 @@ unsigned int keyHashSlot(char *key, int keylen) {
      * what is in the middle between { and }. */
     return crc16(key+s+1,e-s-1) & 0x3FFF;
 }
-migrating_slot pairs={0,0,NULL,0,NULL,0};
+migrating_slot pairs={1,2741,"127.0.0.1",7001,"127.0.0.1",7003};
 static int redirect()
 {
     if ((!strcasecmp(context->tcp.host,pairs.target_ip))&&(context->tcp.port==pairs.target_port))
@@ -1297,15 +1297,13 @@ static int cliSendCommand(int argc, char **argv, long repeat) {
     /* Negative repeat is allowed and causes infinite loop,
        works well with the interval option. */
     while(repeat < 0 || repeat-- > 0) { 
-        printf("finish a commend\n");
+        sleep(1);
         if (!strcasecmp(command,"set") &&pairs.flag&&(pairs.slot==keyHashSlot(argv[1],strlen(argv[1])))&&(redirect()))
             {
-               printf("meet set.\n");
                break;
             }
-        if (!strcasecmp(command,"get")&&pairs.flag&&(pairs.slot==keyHashSlot(argv[1],strlen(argv[1]))))
+       else if (!strcasecmp(command,"get")&&pairs.flag&&(pairs.slot==keyHashSlot(argv[1],strlen(argv[1]))))
         {
-	    printf("meet get.\n");
             redisContext *source,*target;
             int flag;
              if ((!strcasecmp(context->tcp.host,pairs.target_ip))&&(context->tcp.port==pairs.target_port))

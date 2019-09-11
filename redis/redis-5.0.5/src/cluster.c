@@ -5586,13 +5586,12 @@ clusterNode *getNodeByQuery(client *c, struct redisCommand *cmd, robj **argv, in
        /* Return the hashslot by reference. */
     if (hashslot) *hashslot = slot;
     
-    if((server.cluster->migrating_slots_to[slot]!=NULL)&&(cmd->proc==setCommand))
+    if(importing_slot&&(cmd->proc==setCommand))
     {
-         return server.cluster->migrating_slots_to[slot];
+         return myself;
     }
-    if((server.cluster->migrating_slots_to[slot]!=NULL)&&(cmd->proc==getCommand))
+    if((migrating_slot||importing_slot)&&(cmd->proc==getCommand))
     {
-        if ((myself==server.cluster->migrating_slots_to[slot])||(myself==server.cluster->importing_slots_from[slot]))
         return myself;
     }
     /* Cluster is globally down but we got keys? We can't serve the request. */

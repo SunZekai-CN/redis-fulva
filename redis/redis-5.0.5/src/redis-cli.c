@@ -1297,6 +1297,7 @@ static int cliSendCommand(int argc, char **argv, long repeat) {
     /* Negative repeat is allowed and causes infinite loop,
        works well with the interval option. */
     while(repeat < 0 || repeat-- > 0) { 
+        printf("finish a commend\n");
         if (!strcasecmp(command,"set") &&pairs.flag&&(pairs.slot==keyHashSlot(argv[1],strlen(argv[1])))&&(redirect()))
             {
                printf("meet set.\n");

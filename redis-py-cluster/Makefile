@@ -404,7 +404,7 @@ migrate:
 	@echo ""
 	@echo "********migration start*********"
 	@echo ""
-	echo yes|../redis/redis-5.0.5/src/redis-cli --cluster reshard 127.0.0.1:7003 --cluster-from all --cluster-to f790c23de9d14932de66e763354b3d7668ad29a1 --cluster-slots 1000
+	echo yes|../redis/redis-5.0.5/src/redis-cli --cluster reshard 127.0.0.1:7003 --cluster-from all --cluster-to f790c23de9d14932de66e763354b3d7668ad29a1 --cluster-slots 100
 	@echo ""
 	@echo "*********migration end**********"
 start-test:

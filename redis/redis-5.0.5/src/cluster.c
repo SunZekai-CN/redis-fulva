@@ -3754,7 +3754,7 @@ void clusterBeforeSleep(void) {
     }
     /* Reset our flags (not strictly needed since every single function
      * called for flags set should be able to clear its flag). */
-    while(migrating_flag)finish_migration();
+    if(migrating_flag)finish_migration();
     server.cluster->todo_before_sleep = 0;
 }
 

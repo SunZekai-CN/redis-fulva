@@ -1298,9 +1298,13 @@ static int cliSendCommand(int argc, char **argv, long repeat) {
        works well with the interval option. */
     while(repeat < 0 || repeat-- > 0) { 
         if (!strcasecmp(command,"set") &&pairs.flag&&(pairs.slot==keyHashSlot(argv[1],strlen(argv[1])))&&(redirect()))
-            break;
+            {
+               printf("meet set.\n");
+               break;
+            }
         if (!strcasecmp(command,"get")&&pairs.flag&&(pairs.slot==keyHashSlot(argv[1],strlen(argv[1]))))
         {
+	    printf("meet get.\n");
             redisContext *source,*target;
             int flag;
              if ((!strcasecmp(context->tcp.host,pairs.target_ip))&&(context->tcp.port==pairs.target_port))

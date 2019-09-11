@@ -5583,6 +5583,9 @@ clusterNode *getNodeByQuery(client *c, struct redisCommand *cmd, robj **argv, in
     /* No key at all in command? then we can serve the request
      * without redirections or errors in all the cases. */
     if (n == NULL) return myself;
+       /* Return the hashslot by reference. */
+    if (hashslot) *hashslot = slot;
+    
     if((server.cluster->migrating_slots_to[slot]!=NULL)&&(cmd->proc==setCommand))
     {
          return server.cluster->migrating_slots_to[slot];
@@ -5597,9 +5600,6 @@ clusterNode *getNodeByQuery(client *c, struct redisCommand *cmd, robj **argv, in
         if (error_code) *error_code = CLUSTER_REDIR_DOWN_STATE;
         return NULL;
     }
-
-    /* Return the hashslot by reference. */
-    if (hashslot) *hashslot = slot;
 
     /* MIGRATE always works in the context of the local node if the slot
      * is open (migrating or importing state). We need to be able to freely

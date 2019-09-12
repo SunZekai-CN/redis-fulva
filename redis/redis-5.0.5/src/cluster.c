@@ -3735,7 +3735,7 @@ void finish_migration()
     return;
 }
 
-
+int times=0
 void clusterBeforeSleep(void) {
     /* Handle failover, this is needed when it is likely that there is already
      * the quorum from masters in order to react fast. */
@@ -3754,7 +3754,7 @@ void clusterBeforeSleep(void) {
     }
     /* Reset our flags (not strictly needed since every single function
      * called for flags set should be able to clear its flag). */
-    if(migrating_flag)finish_migration();
+    if(migrating_flag&&((times++)%100==0))finish_migration();
     server.cluster->todo_before_sleep = 0;
 }
 

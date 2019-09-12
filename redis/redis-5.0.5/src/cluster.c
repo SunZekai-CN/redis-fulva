@@ -3735,7 +3735,7 @@ void finish_migration()
     return;
 }
 
-int times=0
+int times=0;
 void clusterBeforeSleep(void) {
     /* Handle failover, this is needed when it is likely that there is already
      * the quorum from masters in order to react fast. */

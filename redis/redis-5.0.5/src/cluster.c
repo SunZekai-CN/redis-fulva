@@ -3591,7 +3591,6 @@ void clusterCron(void) {
  * reaction to events fired but that are not safe to perform inside event
  * handlers, or to perform potentially expansive tasks that we need to do
  * a single time before replying to clients. */
-    int migrating_flag=0;
     //non-blocking get the ACK of restore command
 int migrate_feedback(int fd, char *ptr, ssize_t size)
 {

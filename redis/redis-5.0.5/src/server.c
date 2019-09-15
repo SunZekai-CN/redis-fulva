@@ -71,7 +71,7 @@ double R_Zero, R_PosInf, R_NegInf, R_Nan;
 /* Global vars */
 struct redisServer server; /* Server global state */
 volatile unsigned long lru_clock; /* Server global current LRU time. */
-
+int migrating_flag=0;
 /* Our command table.
  *
  * Every entry is composed of the following fields:

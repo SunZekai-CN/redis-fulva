@@ -3693,7 +3693,6 @@ void finish_migration()
     /* On socket error, if we want to retry, do it now before rewriting the
      * command vector. We only retry if we are sure nothing was processed
      * and we failed to read the first reply (j == 0 test). */
-        migrating_flag=0;
         if (!error_from_target  && location == 0 && may_retry &&
             errno != ETIMEDOUT)
         {
@@ -3732,10 +3731,10 @@ void finish_migration()
                  }
         zfree(ov); zfree(kv); zfree(newargv);
     }
+    migrating_flag=0;
     return;
 }
 
-int times=0;
 void clusterBeforeSleep(void) {
     /* Handle failover, this is needed when it is likely that there is already
      * the quorum from masters in order to react fast. */
@@ -3754,7 +3753,7 @@ void clusterBeforeSleep(void) {
     }
     /* Reset our flags (not strictly needed since every single function
      * called for flags set should be able to clear its flag). */
-    if(migrating_flag&&((++times)%100==0))finish_migration();
+    if(migrating_flag)finish_migration();
     server.cluster->todo_before_sleep = 0;
 }
 
@@ -5072,6 +5071,7 @@ void restoreCommand(client *c) {
     signalModifiedKey(c->db,c->argv[1]);
     addReply(c,shared.ok);
     server.dirty++;
+    migrating_flag=1;
 }
 
 /* MIGRATE socket cache implementation.
@@ -5210,7 +5210,6 @@ void migrateCommand(client *c) {
     buf0=zmalloc(sizeof(char*)*1024);
     buf1=zmalloc(sizeof(char*)*1024);
     buf2=zmalloc(sizeof(char*)*1024);
-    migrating_flag=1;
         /* Read the RESTORE replies. */
     error_from_target = 0;
     del_idx = 1; /* Index of the key argument for the replicated DEL op. */

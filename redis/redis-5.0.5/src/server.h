@@ -1518,6 +1518,7 @@ extern dictType hashDictType;
 extern dictType replScriptCacheDictType;
 extern dictType keyptrDictType;
 extern dictType modulesDictType;
+extern int migrating_flag;
 
 /*-----------------------------------------------------------------------------
  * Functions prototypes

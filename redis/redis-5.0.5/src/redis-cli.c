@@ -3390,11 +3390,11 @@ static redisReply *clusterManagerMigrateKeysInReply(clusterManagerNode *source,
     void *_del_reply=NULL;
     redisAppendCommandArgv(source->context,argc,
                            (const char**)argv,argv_len);
+    redisAppendCommandArgv(source->context,reply->elements+1,(const char**)del_argv,del_argv_len);
     int success;
      success = (redisGetReply(source->context, &_reply) == REDIS_OK);
     for (i = 0; i < reply->elements; i++) sdsfree(argv[i + offset]);
     if (!success) goto cleanup;
-    redisAppendCommandArgv(source->context,reply->elements+1,(const char**)del_argv,del_argv_len);
     success = (redisGetReply(source->context, &_del_reply) == REDIS_OK);
     if (!success) goto cleanup;
     migrate_reply = (redisReply *) _reply;

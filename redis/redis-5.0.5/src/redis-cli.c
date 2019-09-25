@@ -3328,18 +3328,24 @@ static redisReply *clusterManagerMigrateKeysInReply(clusterManagerNode *source,
     redisReply *migrate_reply = NULL;
     char **argv = NULL;
     size_t *argv_len = NULL;
-    int c = (replace ? 8 : 7);
+    char **del_argv=NULL;
+    size_t *del_argv_len=NULL;
+    int c = (replace ? 9: 8);
     if (config.auth) c += 2;
     size_t argc = c + reply->elements;
     size_t i, offset = 6; // Keys Offset
     argv = zcalloc(argc * sizeof(char *));
     argv_len = zcalloc(argc * sizeof(size_t));
+    del_argv = zcalloc(argc * sizeof(char *));
+    del_argv_len = zcalloc(argc * sizeof(size_t));
     char portstr[255];
     char timeoutstr[255];
     snprintf(portstr, 10, "%d", target->port);
     snprintf(timeoutstr, 10, "%d", timeout);
     argv[0] = "MIGRATE";
     argv_len[0] = 7;
+    del_argv[0]="DEL";
+    del_argv_len[0]=3;
     argv[1] = target->ip;
     argv_len[1] = strlen(target->ip);
     argv[2] = portstr;
@@ -3355,6 +3361,9 @@ static redisReply *clusterManagerMigrateKeysInReply(clusterManagerNode *source,
         argv_len[offset] = 7;
         offset++;
     }
+    argv[offset] = "COPY";
+    argv_len[offset] = 4;
+    offset++;
     if (config.auth) {
         argv[offset] = "AUTH";
         argv_len[offset] = 4;
@@ -3372,14 +3381,21 @@ static redisReply *clusterManagerMigrateKeysInReply(clusterManagerNode *source,
         assert(entry->type == REDIS_REPLY_STRING);
         argv[idx] = (char *) sdsnew(entry->str);
         argv_len[idx] = entry->len;
+        del_argv[i+1]= (char *) sdsnew(entry->str);
+        del_argv_len[i+1]= entry->len;
         if (dots) dots[i] = '.';
     }
     if (dots) dots[reply->elements] = '\0';
     void *_reply = NULL;
+    void *_del_reply=NULL;
     redisAppendCommandArgv(source->context,argc,
                            (const char**)argv,argv_len);
-    int success = (redisGetReply(source->context, &_reply) == REDIS_OK);
+    int success;
+     success = (redisGetReply(source->context, &_reply) == REDIS_OK);
     for (i = 0; i < reply->elements; i++) sdsfree(argv[i + offset]);
+    if (!success) goto cleanup;
+    redisAppendCommandArgv(source->context,reply->elements+1,(const char**)del_argv,del_argv_len);
+    success = (redisGetReply(source->context, &_del_reply) == REDIS_OK);
     if (!success) goto cleanup;
     migrate_reply = (redisReply *) _reply;
 cleanup:

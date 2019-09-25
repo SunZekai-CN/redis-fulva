@@ -71,7 +71,6 @@ double R_Zero, R_PosInf, R_NegInf, R_Nan;
 /* Global vars */
 struct redisServer server; /* Server global state */
 volatile unsigned long lru_clock; /* Server global current LRU time. */
-int migrating_flag=0;
 /* Our command table.
  *
  * Every entry is composed of the following fields:
@@ -1449,7 +1448,7 @@ int incrementallyRehash(int dbid) {
  * for dict.c to resize the hash tables accordingly to the fact we have o not
  * running childs. */
 void updateDictResizePolicy(void) {
-    if (server.rdb_child_pid == -1 && server.aof_child_pid == -1)
+    if (server.rdb_child_pid == -1 && server.aof_child_pid == -1&&server.migrate_child_pid==-1)
         dictEnableResize();
     else
         dictDisableResize();
@@ -1895,7 +1894,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     }
 
     /* Check if a background saving or AOF rewrite in progress terminated. */
-    if (server.rdb_child_pid != -1 || server.aof_child_pid != -1 ||
+    if (server.rdb_child_pid != -1 || server.aof_child_pid != -1 ||server.migrate_child_pid!=-1||
         ldbPendingChildren())
     {
         int statloc;
@@ -1918,6 +1917,12 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
                 if (!bysignal && exitcode == 0) receiveChildInfo();
             } else if (pid == server.aof_child_pid) {
                 backgroundRewriteDoneHandler(exitcode,bysignal);
+                if (!bysignal && exitcode == 0) receiveChildInfo();
+            } else if (pid==server.migrate_child_pid){
+                addReply(server.migrate_client,shared.ok);
+                resetClient(server.migrate_client);
+                server.migrate_client=NULL;
+                server.migrate_child_pid=-1;
                 if (!bysignal && exitcode == 0) receiveChildInfo();
             } else {
                 if (!ldbRemoveChild(pid)) {
@@ -2789,6 +2794,8 @@ void initServer(void) {
     server.cronloops = 0;
     server.rdb_child_pid = -1;
     server.aof_child_pid = -1;
+    server.migrate_child_pid=-1;
+    server.migrate_client=NULL;
     server.rdb_child_type = RDB_CHILD_TYPE_NONE;
     server.rdb_bgsave_scheduled = 0;
     server.child_info_pipe[0] = -1;

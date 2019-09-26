@@ -4918,7 +4918,7 @@ void restoreCommand(client *c) {
     if (replace) dbDelete(c->db,c->argv[1]);
 
     /* Create the key and set the TTL if any */
-    dbAdd(c->db,c->argv[1],obj);
+   if( lookupKeyRead(c->db,c->argv[1])==NULL) dbAdd(c->db,c->argv[1],obj);
     if (ttl) {
         if (!absttl) ttl+=mstime();
         setExpire(c,c->db,c->argv[1],ttl);
@@ -5057,7 +5057,6 @@ void migrateCommand(client *c) {
     openChildInfoPipe();
     if ((childpid=fork()) > 0)
     {
-        server.migrate_client=c;
         server.migrate_child_pid=childpid;
         return;
     }
@@ -5343,6 +5342,8 @@ try_again:
          * still the SELECT command succeeded (otherwise the code jumps to
          * socket_err label. */
         cs->last_dbid = dbid;
+        addReply(c,shared.ok);
+        resetClient(c);
         sendChildInfo(CHILD_INFO_TYPE_RDB);
         exitFromChild(0);
     } else {

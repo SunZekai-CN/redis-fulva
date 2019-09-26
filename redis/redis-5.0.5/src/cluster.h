@@ -246,7 +246,6 @@ union clusterMsgData {
         clusterMsgModule msg;
     } module;
 };
-
 #define CLUSTER_PROTO_VER 1 /* Cluster bus protocol version. */
 
 typedef struct {

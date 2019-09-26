@@ -1297,7 +1297,6 @@ static int cliSendCommand(int argc, char **argv, long repeat) {
     /* Negative repeat is allowed and causes infinite loop,
        works well with the interval option. */
     while(repeat < 0 || repeat-- > 0) { 
-        sleep(1);
         if (!strcasecmp(command,"set") &&pairs.flag&&(pairs.slot==keyHashSlot(argv[1],strlen(argv[1])))&&(redirect()))
             {
                break;
@@ -3319,6 +3318,8 @@ cleanup:
 /* Migrate keys taken from reply->elements. It returns the reply from the
  * MIGRATE command, or NULL if something goes wrong. If the argument 'dots'
  * is not NULL, a dot will be printed for every migrated key. */
+char **del_argv=NULL;
+size_t *del_argv_len=NULL;
 static redisReply *clusterManagerMigrateKeysInReply(clusterManagerNode *source,
                                                     clusterManagerNode *target,
                                                     redisReply *reply,
@@ -3328,8 +3329,6 @@ static redisReply *clusterManagerMigrateKeysInReply(clusterManagerNode *source,
     redisReply *migrate_reply = NULL;
     char **argv = NULL;
     size_t *argv_len = NULL;
-    char **del_argv=NULL;
-    size_t *del_argv_len=NULL;
     int c = (replace ? 9: 8);
     if (config.auth) c += 2;
     size_t argc = c + reply->elements;
@@ -3387,15 +3386,10 @@ static redisReply *clusterManagerMigrateKeysInReply(clusterManagerNode *source,
     }
     if (dots) dots[reply->elements] = '\0';
     void *_reply = NULL;
-    void *_del_reply=NULL;
     redisAppendCommandArgv(source->context,argc,
                            (const char**)argv,argv_len);
-    redisAppendCommandArgv(source->context,reply->elements+1,(const char**)del_argv,del_argv_len);
-    int success;
-     success = (redisGetReply(source->context, &_reply) == REDIS_OK);
+    int success = (redisGetReply(source->context, &_reply) == REDIS_OK);
     for (i = 0; i < reply->elements; i++) sdsfree(argv[i + offset]);
-    if (!success) goto cleanup;
-    success = (redisGetReply(source->context, &_del_reply) == REDIS_OK);
     if (!success) goto cleanup;
     migrate_reply = (redisReply *) _reply;
 cleanup:
@@ -3405,6 +3399,18 @@ cleanup:
 }
 
 /* Migrate all keys in the given slot from source to target.*/
+static void *addmovecommand(redisContext *c, const char *format, ...)
+{
+    va_list ap;
+    va_start(ap,format);
+    if (redisvAppendCommand(c,format,ap) != REDIS_OK)
+        return NULL;
+    void *reply;
+    redisGetReply(c,&reply);//del
+    redisGetReply(c,&reply);//getkey
+    va_end(ap);
+    return reply;
+}
 static int clusterManagerMigrateKeysInSlot(clusterManagerNode *source,
                                            clusterManagerNode *target,
                                            int slot, int timeout,
@@ -3416,10 +3422,22 @@ static int clusterManagerMigrateKeysInSlot(clusterManagerNode *source,
                  CLUSTER_MANAGER_CMD_FLAG_FIX;
     int do_replace = config.cluster_manager_command.flags &
                      CLUSTER_MANAGER_CMD_FLAG_REPLACE;
+    redisReply*reply = NULL;
     while (1) {
         char *dots = NULL;
-        redisReply *reply = NULL, *migrate_reply = NULL;
-        reply = CLUSTER_MANAGER_COMMAND(source, "CLUSTER "
+        redisReply  *migrate_reply = NULL;
+        if(del_argv)
+        {
+            redisAppendCommandArgv(source->context,reply->elements+1,(const char**)del_argv,del_argv_len);
+            reply=NULL;
+            reply=addmovecommand(source->context, "CLUSTER "
+                                        "GETKEYSINSLOT %d %d", slot,
+                                        pipeline);
+            zfree(del_argv);
+            zfree(del_argv_len);
+            del_argv=NULL;
+        }
+        else reply = CLUSTER_MANAGER_COMMAND(source, "CLUSTER "
                                         "GETKEYSINSLOT %d %d", slot,
                                         pipeline);
         success = (reply != NULL);

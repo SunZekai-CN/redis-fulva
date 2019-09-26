@@ -1046,6 +1046,7 @@ struct redisServer {
     /* General */
     pid_t pid;                  /* Main process pid. */
     pid_t migrate_child_pid; 
+    client *migrate_client;
     char *configfile;           /* Absolute config file path, or NULL */
     char *executable;           /* Absolute executable file path. */
     char **exec_argv;           /* Executable argv vector (copy). */

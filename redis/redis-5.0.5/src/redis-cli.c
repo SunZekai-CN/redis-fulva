@@ -3426,7 +3426,7 @@ static int clusterManagerMigrateKeysInSlot(clusterManagerNode *source,
     while (1) {
         char *dots = NULL;
         redisReply  *migrate_reply = NULL;
-        if(del_argv)
+        if(reply)
         {
             redisAppendCommandArgv(source->context,reply->elements+1,(const char**)del_argv,del_argv_len);
             reply=NULL;

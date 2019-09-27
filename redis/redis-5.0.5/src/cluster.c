@@ -5052,13 +5052,19 @@ void migrateCloseTimedoutSockets(void) {
  *
  * MIGRATE host port "" dbid timeout [COPY | REPLACE | AUTH password] KEYS key1
  * key2 ... keyN */
+void finishmigrate()
+{
+    addReply(server.migrate_client,shared.ok);
+    resetClient(server.migrate_client);
+    server.migrate_client=NULL;
+}
 void migrateCommand(client *c) {
      pid_t childpid;
+     signal(SIGCHLD,finishmigrate);
     openChildInfoPipe();
     if ((childpid=fork()) > 0)
     {
         server.migrate_client=c;
-        server.migrate_child_pid=childpid;
         return;
     }
     closeListeningSockets(0);
@@ -5343,7 +5349,6 @@ try_again:
          * still the SELECT command succeeded (otherwise the code jumps to
          * socket_err label. */
         cs->last_dbid = dbid;
-        sendChildInfo(CHILD_INFO_TYPE_RDB);
         exitFromChild(0);
     } else {
         /* On error we already sent it in the for loop above, and set

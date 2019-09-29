@@ -3405,11 +3405,17 @@ static void *addmovecommand(redisContext *c, const char *format, ...)
     va_start(ap,format);
     if (redisvAppendCommand(c,format,ap) != REDIS_OK)
         return NULL;
-    void *reply;
-    redisGetReply(c,&reply);//del
-    redisGetReply(c,&reply);//getkey
+    void *reply1,*reply2;
+    redisReply *reply_1,*reply_2;
+    redisGetReply(c,&reply1);//del
+    redisGetReply(c,&reply2);//getkey
     va_end(ap);
-    return reply;
+    reply_1=reply1;
+    reply_2=reply2;
+    if(reply_1->type==REDIS_REPLY_ARRAY) return reply1;
+   if(reply_2->type==REDIS_REPLY_ARRAY) return reply2;
+   printf("something wrong with getkeys!\n");
+   return reply2;
 }
 static int clusterManagerMigrateKeysInSlot(clusterManagerNode *source,
                                            clusterManagerNode *target,

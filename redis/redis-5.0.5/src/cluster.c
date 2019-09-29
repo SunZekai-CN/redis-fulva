@@ -5052,18 +5052,13 @@ void migrateCloseTimedoutSockets(void) {
  *
  * MIGRATE host port "" dbid timeout [COPY | REPLACE | AUTH password] KEYS key1
  * key2 ... keyN */
-void finishmigrate()
-{
-    addReply(server.migrate_client,shared.ok);
-    resetClient(server.migrate_client);
-    server.migrate_client=NULL;
-}
+
 void migrateCommand(client *c) {
      pid_t childpid;
-     signal(SIGCHLD,finishmigrate);
     openChildInfoPipe();
     if ((childpid=fork()) > 0)
     {
+        server.migrate_child_pid=childpid;
         server.migrate_client=c;
         return;
     }

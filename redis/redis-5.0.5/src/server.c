@@ -55,6 +55,7 @@
 #include <sys/utsname.h>
 #include <locale.h>
 #include <sys/socket.h>
+#include <signal.h>
 
 /* Our shared "common" objects */
 
@@ -2788,6 +2789,7 @@ void initServer(void) {
     server.cronloops = 0;
     server.rdb_child_pid = -1;
     server.aof_child_pid = -1;
+    server.migrate_child_pid=-1;
     server.migrate_client=NULL;
     server.rdb_child_type = RDB_CHILD_TYPE_NONE;
     server.rdb_bgsave_scheduled = 0;
@@ -4733,7 +4735,17 @@ int redisIsSupervised(int mode) {
 
     return 0;
 }
-
+void finishmigrate(int signo)
+{
+    pid_t pid;
+    if((server.migrate_child_pid!=-1)&&( waitpid(server.migrate_child_pid, NULL, WNOHANG)> 0 ))
+    {
+        addReply(server.migrate_client,shared.ok);
+         resetClient(server.migrate_client);
+        server.migrate_client=NULL;
+        server.migrate_child_pid=-1;
+    } 
+}
 
 int main(int argc, char **argv) {
     struct timeval tv;
@@ -4773,7 +4785,7 @@ int main(int argc, char **argv) {
     zmalloc_set_oom_handler(redisOutOfMemoryHandler);
     srand(time(NULL)^getpid());
     gettimeofday(&tv,NULL);
-
+    signal(SIGCHLD,finishmigrate);
     char hashseed[16];
     getRandomHexChars(hashseed,sizeof(hashseed));
     dictSetHashFunctionSeed((uint8_t*)hashseed);

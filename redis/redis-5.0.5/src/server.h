@@ -1045,6 +1045,7 @@ struct clusterState;
 struct redisServer {
     /* General */
     pid_t pid;                  /* Main process pid. */
+    pid_t migrate_child_pid;
     client *migrate_client;
     char *configfile;           /* Absolute config file path, or NULL */
     char *executable;           /* Absolute executable file path. */

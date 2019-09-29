@@ -4735,9 +4735,8 @@ int redisIsSupervised(int mode) {
 
     return 0;
 }
-void finishmigrate(int signo)
+void finishmigrate()
 {
-    pid_t pid;
     if((server.migrate_child_pid!=-1)&&( waitpid(server.migrate_child_pid, NULL, WNOHANG)> 0 ))
     {
         addReply(server.migrate_client,shared.ok);

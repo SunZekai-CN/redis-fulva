@@ -1919,6 +1919,11 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
             } else if (pid == server.aof_child_pid) {
                 backgroundRewriteDoneHandler(exitcode,bysignal);
                 if (!bysignal && exitcode == 0) receiveChildInfo();
+            } else if (pid==server.migrate_child_pid){
+                addReply(server.migrate_client,shared.ok);
+                resetClient(server.migrate_client);
+                server.migrate_client=NULL;
+                server.migrate_child_pid=-1;
             }else {
                 if (!ldbRemoveChild(pid)) {
                     serverLog(LL_WARNING,

@@ -1919,12 +1919,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
             } else if (pid == server.aof_child_pid) {
                 backgroundRewriteDoneHandler(exitcode,bysignal);
                 if (!bysignal && exitcode == 0) receiveChildInfo();
-            } else if (pid==server.migrate_child_pid){
-                addReply(server.migrate_client,shared.ok);
-                resetClient(server.migrate_client);
-                server.migrate_client=NULL;
-                server.migrate_child_pid=-1;
-            }else {
+            } else {
                 if (!ldbRemoveChild(pid)) {
                     serverLog(LL_WARNING,
                         "Warning, detected child with unmatched pid: %ld",
@@ -2795,7 +2790,6 @@ void initServer(void) {
     server.rdb_child_pid = -1;
     server.aof_child_pid = -1;
     server.migrate_child_pid=-1;
-    server.migrate_client=NULL;
     server.rdb_child_type = RDB_CHILD_TYPE_NONE;
     server.rdb_bgsave_scheduled = 0;
     server.child_info_pipe[0] = -1;
@@ -4744,9 +4738,6 @@ void finishmigrate()
 {
     if((server.migrate_child_pid!=-1)&&( waitpid(server.migrate_child_pid, NULL, WNOHANG)> 0 ))
     {
-        addReply(server.migrate_client,shared.ok);
-         resetClient(server.migrate_client);
-        server.migrate_client=NULL;
         server.migrate_child_pid=-1;
     } 
 }

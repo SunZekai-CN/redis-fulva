@@ -3318,8 +3318,6 @@ cleanup:
 /* Migrate keys taken from reply->elements. It returns the reply from the
  * MIGRATE command, or NULL if something goes wrong. If the argument 'dots'
  * is not NULL, a dot will be printed for every migrated key. */
-char **del_argv=NULL;
-size_t *del_argv_len=NULL;
 static redisReply *clusterManagerMigrateKeysInReply(clusterManagerNode *source,
                                                     clusterManagerNode *target,
                                                     redisReply *reply,
@@ -3335,16 +3333,12 @@ static redisReply *clusterManagerMigrateKeysInReply(clusterManagerNode *source,
     size_t i, offset = 6; // Keys Offset
     argv = zcalloc(argc * sizeof(char *));
     argv_len = zcalloc(argc * sizeof(size_t));
-    del_argv = zcalloc(argc * sizeof(char *));
-    del_argv_len = zcalloc(argc * sizeof(size_t));
     char portstr[255];
     char timeoutstr[255];
     snprintf(portstr, 10, "%d", target->port);
     snprintf(timeoutstr, 10, "%d", timeout);
     argv[0] = "MIGRATE";
     argv_len[0] = 7;
-    del_argv[0]="DEL";
-    del_argv_len[0]=3;
     argv[1] = target->ip;
     argv_len[1] = strlen(target->ip);
     argv[2] = portstr;
@@ -3380,8 +3374,6 @@ static redisReply *clusterManagerMigrateKeysInReply(clusterManagerNode *source,
         assert(entry->type == REDIS_REPLY_STRING);
         argv[idx] = (char *) sdsnew(entry->str);
         argv_len[idx] = entry->len;
-        del_argv[i+1]= (char *) sdsnew(entry->str);
-        del_argv_len[i+1]= entry->len;
         if (dots) dots[i] = '.';
     }
     if (dots) dots[reply->elements] = '\0';
@@ -3399,24 +3391,6 @@ cleanup:
 }
 
 /* Migrate all keys in the given slot from source to target.*/
-static void *addmovecommand(redisContext *c, const char *format, ...)
-{
-    va_list ap;
-    va_start(ap,format);
-    if (redisvAppendCommand(c,format,ap) != REDIS_OK)
-        return NULL;
-    void *reply1,*reply2;
-    redisReply *reply_1,*reply_2;
-    redisGetReply(c,&reply1);//del
-    redisGetReply(c,&reply2);//getkey
-    va_end(ap);
-    reply_1=reply1;
-    reply_2=reply2;
-    if(reply_1->type==REDIS_REPLY_ARRAY) return reply1;
-   if(reply_2->type==REDIS_REPLY_ARRAY) return reply2;
-   printf("something wrong with getkeys!\n");
-   return reply2;
-}
 static int clusterManagerMigrateKeysInSlot(clusterManagerNode *source,
                                            clusterManagerNode *target,
                                            int slot, int timeout,
@@ -3428,22 +3402,10 @@ static int clusterManagerMigrateKeysInSlot(clusterManagerNode *source,
                  CLUSTER_MANAGER_CMD_FLAG_FIX;
     int do_replace = config.cluster_manager_command.flags &
                      CLUSTER_MANAGER_CMD_FLAG_REPLACE;
-    redisReply*reply = NULL;
     while (1) {
         char *dots = NULL;
-        redisReply  *migrate_reply = NULL;
-        if(reply)
-        {
-            redisAppendCommandArgv(source->context,reply->elements+1,(const char**)del_argv,del_argv_len);
-            reply=NULL;
-            reply=addmovecommand(source->context, "CLUSTER "
-                                        "GETKEYSINSLOT %d %d", slot,
-                                        pipeline);
-            zfree(del_argv);
-            zfree(del_argv_len);
-            del_argv=NULL;
-        }
-        else reply = CLUSTER_MANAGER_COMMAND(source, "CLUSTER "
+        redisReply  *migrate_reply = NULL,*reply = NULL;
+        reply = CLUSTER_MANAGER_COMMAND(source, "CLUSTER "
                                         "GETKEYSINSLOT %d %d", slot,
                                         pipeline);
         success = (reply != NULL);
@@ -3640,7 +3602,6 @@ static int clusterManagerMoveSlot(clusterManagerNode *source,
                                                     "SETSLOT %d %s %s",
                                                     slot, "node",
                                                     target->name);
-            pairs.flag=0;
             success = (r != NULL);
             if (!success) return 0;
             if (r->type == REDIS_REPLY_ERROR) {
@@ -3655,6 +3616,7 @@ static int clusterManagerMoveSlot(clusterManagerNode *source,
             if (!success) return 0;
         }
     }
+    pairs.flag=0;
     /* Update the node logical config */
     if (opts & CLUSTER_MANAGER_OPT_UPDATE) {
         source->slots[slot] = 0;

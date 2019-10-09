@@ -40,7 +40,7 @@
 #include <sys/stat.h>
 #include <sys/file.h>
 #include <math.h>
-
+#include "../deps/hiredis/hiredis.h"
 /* A global reference to myself is handy to make code more clear.
  * Myself always points to server.cluster->myself, that is, the clusterNode
  * that represents this node. */
@@ -5059,7 +5059,6 @@ void migrateCommand(client *c) {
     if ((childpid=fork()) > 0)
     {
         server.migrate_child_pid=childpid;
-        server.migrate_client=c;
         return;
     }
     closeListeningSockets(0);
@@ -5077,6 +5076,8 @@ void migrateCommand(client *c) {
     int write_error = 0;
     int argv_rewritten = 0;
 
+    char **argv = NULL;
+    size_t *argv_len = NULL;
     /* To support the KEYS option we need the following additional state. */
     int first_key = 3; /* Argument index of the first key. */
     int num_keys = 1;  /* By default only migrate the 'key' argument. */
@@ -5110,7 +5111,6 @@ void migrateCommand(client *c) {
             return;
         }
     }
-
     /* Sanity check */
     if (getLongFromObjectOrReply(c,c->argv[5],&timeout,NULL) != C_OK ||
         getLongFromObjectOrReply(c,c->argv[4],&dbid,NULL) != C_OK)
@@ -5261,6 +5261,10 @@ try_again:
      * to propagate the MIGRATE as a DEL command (if no COPY option was given).
      * We allocate num_keys+1 because the additional argument is for "DEL"
      * command name itself. */
+    argv = zcalloc((num_keys +1)* sizeof(char *));
+    argv_len = zcalloc((num_keys+1) * sizeof(size_t));
+    argv[0]="DEL";
+    argv_len[0]=3;
     if (!copy) newargv = zmalloc(sizeof(robj*)*(num_keys+1));
 
     for (j = 0; j < num_keys; j++) {
@@ -5295,6 +5299,8 @@ try_again:
                 newargv[del_idx++] = kv[j];
                 incrRefCount(kv[j]);
             }
+            argv[j+1]= (char *) sdsnew(kv[j]->ptr);
+            argv_len[j+1]=strlen(argv[j+1]);
         }
     }
 
@@ -5344,6 +5350,16 @@ try_again:
          * still the SELECT command succeeded (otherwise the code jumps to
          * socket_err label. */
         cs->last_dbid = dbid;
+        redisContext *context;
+        context=redisConnect(myself->ip,myself->port);
+        anetKeepAlive(NULL, context->fd, 15);
+        redisAppendCommandArgv(context,num_keys+1,
+                           (const char**)argv,argv_len);
+          void *_reply = NULL;
+        redisGetReply(context, &_reply);
+        addReply(c,shared.ok);
+        c->flags &= ~CLIENT_PENDING_WRITE;
+        while(writeToClient(c->fd,c,0)==C_ERR) ;
         exitFromChild(0);
     } else {
         /* On error we already sent it in the for loop above, and set
